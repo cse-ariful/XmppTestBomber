@@ -135,7 +135,18 @@
           </div>
         </div>
       </div>
-
+      <div class="card mb-4">
+        <div class="card-header">Bomb Message</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-12">
+              <button id="bombMessageBtn" class="btn btn-warning w-100">
+                Bomb Message
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="card">
         <div class="card-header">Activity Logs</div>
         <div class="card-body">
@@ -306,10 +317,112 @@
             log(`Failed to send message: ${error.message}`, "danger");
           }
         });
+        const bombMessageBtn = document.getElementById("bombMessageBtn");
 
+        let bombingActive = false; // Track whether bombing is active
+        let bombingInterval; // Store the setInterval ID
+
+        // Function to randomly select a user and send a fake message
+        function bombMessage() {
+          if (credentials.length === 0) {
+            log("No credentials available to send a message", "danger");
+            return;
+          }
+
+          // Randomly select a sender
+          const randomSenderIndex = Math.floor(
+            Math.random() * credentials.length
+          );
+          const sender = credentials[randomSenderIndex].username;
+
+          // Randomly generate a recipient (can use a different list if desired)
+          const recipient = "admin@localhost"; // You can use a predefined list here if needed.
+
+          // Generate a fake message
+          const message = generateRandomMessage();
+
+          // Set inputs
+          recipientInput.value = recipient;
+          messageInput.value = message;
+
+          // Auto-select the sender
+          senderSelect.value = sender;
+
+          // Trigger send message
+          sendMessageBtn.click();
+          log(`Bombed message to ${recipient} from ${sender}`, "info");
+        }
+
+        // Function to start bombing
+        function startBombing() {
+          bombMessageBtn.textContent = "Stop Bombing"; // Update button text
+          bombingActive = true;
+
+          bombingInterval = setInterval(() => {
+            bombMessage();
+          }, Math.floor(Math.random() * (4000 - 1000 + 1)) + 1000); // Random delay between 1-4 seconds
+        }
+
+        // Function to stop bombing
+        function stopBombing() {
+          bombMessageBtn.textContent = "Bomb Message"; // Reset button text
+          bombingActive = false;
+
+          clearInterval(bombingInterval); // Stop the bombing interval
+        }
+
+        // Bomb message button click handler
+        bombMessageBtn.addEventListener("click", () => {
+          if (bombingActive) {
+            stopBombing();
+          } else {
+            startBombing();
+          }
+        });
         // Initial credentials load
         loadCredentials();
       });
+
+      function generateRandomMessage() {
+        // Predefined sets of words
+        const subjects = ["Hey", "Hello", "Hi", "Greetings", "Good morning"];
+        const verbs = [
+          "how are you",
+          "hope you're doing well",
+          "wanted to check in",
+          "just wanted to say",
+          "thought I'd say",
+        ];
+        const adjectives = [
+          "great",
+          "amazing",
+          "wonderful",
+          "awesome",
+          "fantastic",
+        ];
+        const additionalPhrases = [
+          "Let's catch up soon!",
+          "I hope you have a great day!",
+          "Looking forward to hearing from you.",
+          "Stay safe and take care!",
+          "Can't wait to chat more.",
+        ];
+
+        // Function to get a random element from an array
+        function getRandomElement(arr) {
+          const randomIndex = Math.floor(Math.random() * arr.length);
+          return arr[randomIndex];
+        }
+
+        // Construct a random message
+        const message = `${getRandomElement(subjects)}! ${getRandomElement(
+          verbs
+        )} and I hope everything is ${getRandomElement(
+          adjectives
+        )}. ${getRandomElement(additionalPhrases)}`;
+
+        return message;
+      }
     </script>
   </body>
 </html>

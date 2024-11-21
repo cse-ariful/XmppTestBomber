@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from xmpp import Client, Iq, Presence, Message
 import os
+from typing import List, Optional
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,13 +31,49 @@ class CredentialPayload(BaseModel):
     password: str
 
 # Store credentials (in a real-world scenario, use a more secure storage)
-credentials = []
+credentials = [
+    CredentialPayload(username="bob@localhost", password="admin"),
+    CredentialPayload(username="tahsan@localhost", password="admin"),
+    CredentialPayload(username="8801869946417@localhost", password="admin"),
+    CredentialPayload(username="8801516157495@localhost", password="admin")
+]
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     # Serve the index.html from static directory
     with open('static/index.html', 'r') as f:
         return HTMLResponse(content=f.read())
+# Helper function to find a credential by username
+def find_credential(username: str) -> Optional[CredentialPayload]:
+    return next((cred for cred in credentials if cred.username == username), None)
+
+# POST endpoint to add a credential
+@app.post("/credentials")
+async def add_credential(credential: CredentialPayload):
+    # Check if credential already exists
+    if find_credential(credential.username):
+        raise HTTPException(status_code=400, detail="Credential already exists")
+    
+    # Add the new credential
+    credentials.append(credential)
+    return {"message": f"Credential for {credential.username} added successfully"}
+
+# DELETE endpoint to remove a credential
+@app.delete("/credentials/{username}")
+async def remove_credential(username: str):
+    # Find and remove the credential
+    existing_credential = find_credential(username)
+    if not existing_credential:
+        raise HTTPException(status_code=404, detail="Credential not found")
+    
+    credentials.remove(existing_credential)
+    return {"message": f"Credential for {username} removed successfully"}
+
+# Endpoint to get the list of all credentials (for verification)
+@app.get("/credentials")
+async def get_credentials():
+    return credentials
+
 
 @app.post("/send-xmpp-message")
 async def send_xmpp_message(payload: XMPPPayload):

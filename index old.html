@@ -102,6 +102,40 @@
         </div>
       </div>
 
+      <div class="card mb-4">
+        <div class="card-header">Send Message</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <select id="senderSelect" class="form-select">
+                <option value="">Select Sender</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <input
+                type="text"
+                id="recipientInput"
+                class="form-control"
+                placeholder="Recipient JID"
+              />
+            </div>
+            <div class="col-md-4">
+              <input
+                type="text"
+                id="messageInput"
+                class="form-control"
+                placeholder="Message"
+              />
+            </div>
+            <div class="col-md-12 mt-3">
+              <button id="sendMessageBtn" class="btn btn-primary w-100">
+                Send Message
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-header">Activity Logs</div>
         <div class="card-body">
@@ -114,7 +148,6 @@
       </div>
     </div>
 
-    <!-- Strophe Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/strophe.js/1.5.0/strophe.min.js"></script>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
@@ -127,6 +160,10 @@
         const passwordInput = document.getElementById("passwordInput");
         const addCredentialsBtn = document.getElementById("addCredentialsBtn");
         const credentialsList = document.getElementById("credentialsList");
+        const senderSelect = document.getElementById("senderSelect");
+        const recipientInput = document.getElementById("recipientInput");
+        const messageInput = document.getElementById("messageInput");
+        const sendMessageBtn = document.getElementById("sendMessageBtn");
         const activityLogs = document.getElementById("activityLogs");
 
         const BACKEND_URL = window.location.origin;
@@ -135,28 +172,31 @@
         }//${window.location.host}/ws/xmpp-connection`;
 
         let credentials = [];
-        let websocket = null;
 
         function log(message, type = "info") {
           const logEntry = document.createElement("div");
           logEntry.classList.add(`text-${type}`, "mb-2");
           logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
           activityLogs.prepend(logEntry);
+          console.log(`[${type.toUpperCase()}] ${message}`);
         }
 
-        async function fetchCredentials() {
-          try {
-            const response = await fetch(`${BACKEND_URL}/credentials`);
-            credentials = await response.json();
-            renderCredentials();
-          } catch (error) {
-            log(`Failed to fetch credentials: ${error}`, "danger");
-          }
+        function saveCredentials() {
+          localStorage.setItem("xmppCredentials", JSON.stringify(credentials));
+          renderCredentials();
+          updateSenderSelect();
+        }
+
+        function loadCredentials() {
+          const storedCredentials = localStorage.getItem("xmppCredentials");
+          credentials = storedCredentials ? JSON.parse(storedCredentials) : [];
+          renderCredentials();
+          updateSenderSelect();
         }
 
         function renderCredentials() {
           credentialsList.innerHTML = "";
-          credentials.forEach((cred, index) => {
+          credentials.forEach((cred) => {
             const row = document.createElement("tr");
             row.innerHTML = `
                 <td>${cred.username}</td>
@@ -168,125 +208,107 @@
           });
 
           document.querySelectorAll(".remove-cred").forEach((btn) => {
-            btn.addEventListener("click", async (e) => {
+            btn.addEventListener("click", (e) => {
               const username = e.target.getAttribute("data-username");
-              try {
-                const response = await fetch(
-                  `${BACKEND_URL}/credentials/${username}`,
-                  {
-                    method: "DELETE",
-                  }
-                );
-                if (response.ok) {
-                  await fetchCredentials();
-                  log(`Removed credential for ${username}`, "warning");
-                }
-              } catch (error) {
-                log(`Failed to remove credential: ${error}`, "danger");
-              }
+              credentials = credentials.filter(
+                (cred) => cred.username !== username
+              );
+              saveCredentials();
+              log(`Removed credential for ${username}`, "warning");
             });
           });
         }
 
-        addCredentialsBtn.addEventListener("click", async () => {
+        function updateSenderSelect() {
+          senderSelect.innerHTML = '<option value="">Select Sender</option>';
+          credentials.forEach((cred) => {
+            const option = document.createElement("option");
+            option.value = cred.username;
+            option.textContent = cred.username;
+            senderSelect.appendChild(option);
+          });
+        }
+
+        addCredentialsBtn.addEventListener("click", () => {
           const username = usernameInput.value;
           const password = passwordInput.value;
 
           if (username && password) {
-            try {
-              const response = await fetch(`${BACKEND_URL}/credentials`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ username, password }),
-              });
-
-              if (response.ok) {
-                await fetchCredentials();
-                usernameInput.value = "";
-                passwordInput.value = "";
-                log(`Added credential for ${username}`, "success");
-              } else {
-                const errorData = await response.json();
-                log(`Failed to add credential: ${errorData.detail}`, "danger");
-              }
-            } catch (error) {
-              log(`Failed to add credential: ${error}`, "danger");
+            // Check if username already exists
+            const existingCred = credentials.find(
+              (cred) => cred.username === username
+            );
+            if (existingCred) {
+              log(`Credential for ${username} already exists`, "warning");
+              return;
             }
+
+            credentials.push({ username, password });
+            saveCredentials();
+
+            usernameInput.value = "";
+            passwordInput.value = "";
+            log(`Added credential for ${username}`, "success");
           }
         });
 
-        function connectXMPP() {
-          if (credentials.length === 0) {
-            log("No credentials available", "warning");
-            return;
-          }
-
-          const randomCred =
-            credentials[Math.floor(Math.random() * credentials.length)];
+        sendMessageBtn.addEventListener("click", async () => {
           const serverAddress = serverAddressInput.value;
           const serverPort = serverPortInput.value;
           const connectionType = connectionTypeSelect.value;
           const disableTLS = disableTLSCheckbox.checked;
+          const sender = senderSelect.value;
+          const recipient = recipientInput.value;
+          const message = messageInput.value;
 
-          // Close existing WebSocket if open
-          if (websocket && websocket.readyState !== WebSocket.CLOSED) {
-            websocket.close();
+          // Validate inputs
+          if (!sender || !recipient || !message) {
+            log("Please fill in all message fields", "danger");
+            return;
           }
 
-          // Establish WebSocket connection
-          websocket = new WebSocket(WEBSOCKET_URL);
+          const senderCred = credentials.find(
+            (cred) => cred.username === sender
+          );
+          if (!senderCred) {
+            log("Selected sender not found", "danger");
+            return;
+          }
 
-          websocket.onopen = () => {
-            log("WebSocket connection established", "success");
+          try {
+            const response = await fetch(`${BACKEND_URL}/send-xmpp-message`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                serverUrl: serverAddress,
+                fromJID: `${sender}@example.com`,
+                fromJIDPass: senderCred.password,
+                toJID: recipient,
+                message: message,
+              }),
+            });
 
-            // Send connection request
-            websocket.send(
-              JSON.stringify({
-                server: serverAddress,
-                port: serverPort,
-                connectionType: connectionType,
-                username: randomCred.username,
-                password: randomCred.password,
-                disableTLS: disableTLS,
-              })
-            );
-          };
-
-          websocket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            switch (data.status) {
-              case "connecting":
-                log("Attempting XMPP connection...", "info");
-                break;
-              case "connected":
-                log(`Connected to ${data.details.server}`, "success");
-                break;
-              case "message_sent":
-                log(`Message sent to ${data.to}`, "success");
-                break;
-              case "auth_failed":
-                log("Authentication failed", "danger");
-                break;
-              case "error":
-                log(`Connection error: ${data.message}`, "danger");
-                break;
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(
+                errorData.detail || `HTTP error! status: ${response.status}`
+              );
             }
-          };
 
-          websocket.onerror = (error) => {
-            log(`WebSocket error: ${error}`, "danger");
-          };
+            const result = await response.json();
+            log(`Message sent successfully to ${recipient}`, "success");
 
-          websocket.onclose = () => {
-            log("WebSocket connection closed", "warning");
-          };
-        }
+            // Clear message input
+            messageInput.value = "";
+          } catch (error) {
+            log(`Failed to send message: ${error.message}`, "danger");
+          }
+        });
 
-        // Initial credentials fetch
-        fetchCredentials();
-        connectBtn.addEventListener("click", connectXMPP);
+        // Initial credentials load
+        loadCredentials();
       });
     </script>
   </body>
