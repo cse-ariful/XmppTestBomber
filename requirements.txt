@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+slixmpp
+python-jose
+python-multipart
