@@ -1,5 +1,6 @@
 import logging
 import json
+import uuid
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -78,6 +79,7 @@ async def get_credentials():
 @app.post("/send-xmpp-message")
 async def send_xmpp_message(payload: XMPPPayload):
     try:
+        print(payload.dict())
         # More robust JID parsing
         def parse_jid(jid):
             # Split JID into parts (username, domain, resource)
@@ -109,7 +111,7 @@ async def send_xmpp_message(payload: XMPPPayload):
             )
         
         # Authenticate
-        if not client.auth(username, payload.fromJIDPass, resource=resource):
+        if not client.auth(username, payload.fromJIDPass):
             raise HTTPException(
                 status_code=401, 
                 detail="Authentication failed"
@@ -119,7 +121,14 @@ async def send_xmpp_message(payload: XMPPPayload):
         client.sendInitPresence()
         
         # Create and send message
+        message_id = str(uuid.uuid4())
+
+        # Create the message with the necessary attributes
         msg = Message(payload.toJID, payload.message)
+        msg.setAttr('type', 'chat')  # Set message type to 'chat'
+        msg.setAttr('id', message_id)  # Set the message ID to a UUID
+
+        # Send the message
         client.send(msg)
         
         # Disconnect
