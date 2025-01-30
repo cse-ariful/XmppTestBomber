@@ -76,7 +76,6 @@ async def get_credentials():
 @router.post("/send-xmpp-message")
 async def send_xmpp_message(payload: XMPPPayload):
     try:
-        print(payload.dict())
         # More robust JID parsing
         def parse_jid(jid):
             # Split JID into parts (username, domain, resource)

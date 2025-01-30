@@ -14,95 +14,6 @@
       <h1 class="mb-4">XMPP Connection Utility</h1>
 
       <div class="card mb-4">
-        <div class="card-header">Server Configuration</div>
-        <div class="card-body">
-          <div class="row g-3">
-            <div class="col-md-4">
-              <input
-                type="text"
-                id="serverAddress"
-                class="form-control"
-                value="192.168.0.117"
-                placeholder="XMPP Server Address"
-              />
-            </div>
-            <div class="col-md-3">
-              <input
-                type="number"
-                id="serverPort"
-                class="form-control"
-                value="5280"
-                placeholder="Port"
-              />
-            </div>
-            <div class="col-md-3">
-              <select id="connectionType" class="form-select">
-                <option value="bosh">BOSH</option>
-                <option value="websocket">WebSocket</option>
-              </select>
-            </div>
-            <div class="col-md-2">
-              <button id="connectBtn" class="btn btn-primary w-100">
-                Connect
-              </button>
-            </div>
-          </div>
-          <div class="row mt-3">
-            <div class="col">
-              <div class="form-check">
-                <input
-                  class="form-check-input"
-                  type="checkbox"
-                  id="disableTLS"
-                />
-                <label class="form-check-label" for="disableTLS">
-                  Disable TLS
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card mb-4">
-        <div class="card-header">Credentials</div>
-        <div class="card-body">
-          <div class="row g-3">
-            <div class="col-md-4">
-              <input
-                type="text"
-                id="usernameInput"
-                class="form-control"
-                placeholder="Username"
-              />
-            </div>
-            <div class="col-md-4">
-              <input
-                type="password"
-                id="passwordInput"
-                class="form-control"
-                placeholder="Password"
-              />
-            </div>
-            <div class="col-md-4">
-              <button id="addCredentialsBtn" class="btn btn-success w-100">
-                Add Credentials
-              </button>
-            </div>
-          </div>
-          <table class="table table-striped mt-3" id="credentialsTable">
-            <thead>
-              <tr>
-                <th>Username</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="credentialsList"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card mb-4">
         <div class="card-header">Send Message</div>
         <div class="card-body">
           <div class="row g-3">
@@ -112,12 +23,9 @@
               </select>
             </div>
             <div class="col-md-4">
-              <input
-                type="text"
-                id="recipientInput"
-                class="form-control"
-                placeholder="Recipient JID"
-              />
+              <select id="recipientSelect" class="form-select">
+                <option value="">Select Receiver</option>
+              </select>
             </div>
             <div class="col-md-4">
               <input
@@ -135,6 +43,7 @@
           </div>
         </div>
       </div>
+
       <div class="row mt-3">
         <div class="col">
           <div class="form-check">
@@ -145,6 +54,7 @@
           </div>
         </div>
       </div>
+
       <div class="card mb-4">
         <div class="card-header">Bomb Message</div>
         <div class="card-body">
@@ -157,6 +67,7 @@
           </div>
         </div>
       </div>
+
       <div class="card">
         <div class="card-header">Activity Logs</div>
         <div class="card-body">
@@ -172,29 +83,17 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/strophe.js/1.5.0/strophe.min.js"></script>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
-        const serverAddressInput = document.getElementById("serverAddress");
-        const serverPortInput = document.getElementById("serverPort");
-        const connectionTypeSelect = document.getElementById("connectionType");
-        const disableTLSCheckbox = document.getElementById("disableTLS");
-        const sendToRandom = document.getElementById("sendToRandom");
-        const connectBtn = document.getElementById("connectBtn");
-        const usernameInput = document.getElementById("usernameInput");
-        const passwordInput = document.getElementById("passwordInput");
-        const addCredentialsBtn = document.getElementById("addCredentialsBtn");
-        const credentialsList = document.getElementById("credentialsList");
         const senderSelect = document.getElementById("senderSelect");
-        const recipientInput = document.getElementById("recipientInput");
+        const recipientSelect = document.getElementById("recipientSelect");
         const messageInput = document.getElementById("messageInput");
         const sendMessageBtn = document.getElementById("sendMessageBtn");
         const activityLogs = document.getElementById("activityLogs");
+        const sendToRandom = document.getElementById("sendToRandom");
+        const bombMessageBtn = document.getElementById("bombMessageBtn");
 
-        const BACKEND_URL = window.location.origin;
-        const WEBSOCKET_URL = `${
-          window.location.protocol === "https:" ? "wss:" : "ws:"
-        }//${window.location.host}/ws/xmpp-connection`;
+        let users = [];
 
-        let credentials = [];
-
+        // Function to log activity
         function log(message, type = "info") {
           const logEntry = document.createElement("div");
           logEntry.classList.add(`text-${type}`, "mb-2");
@@ -203,117 +102,65 @@
           console.log(`[${type.toUpperCase()}] ${message}`);
         }
 
-        function saveCredentials() {
-          localStorage.setItem("xmppCredentials", JSON.stringify(credentials));
-          renderCredentials();
-          updateSenderSelect();
-        }
+        // Fetch users from server
+        async function loadUsers() {
+          try {
+            const response = await fetch("/users");
+            const data = await response.json();
+            users = data;
 
-        function loadCredentials() {
-          const storedCredentials = localStorage.getItem("xmppCredentials");
-          credentials = storedCredentials ? JSON.parse(storedCredentials) : [];
-          renderCredentials();
-          updateSenderSelect();
-        }
+            // Populate sender and recipient selects
+            senderSelect.innerHTML = '<option value="">Select Sender</option>';
+            recipientSelect.innerHTML =
+              '<option value="">Select Receiver</option>';
 
-        function renderCredentials() {
-          credentialsList.innerHTML = "";
-          credentials.forEach((cred) => {
-            const row = document.createElement("tr");
-            row.innerHTML = `
-                <td>${cred.username}</td>
-                <td>
-                    <button class="btn btn-sm btn-danger remove-cred" data-username="${cred.username}">Remove</button>
-                </td>
-            `;
-            credentialsList.appendChild(row);
-          });
+            users.forEach((user) => {
+              const senderOption = document.createElement("option");
+              senderOption.value = user.username;
+              senderOption.textContent = user.username;
+              senderSelect.appendChild(senderOption);
 
-          document.querySelectorAll(".remove-cred").forEach((btn) => {
-            btn.addEventListener("click", (e) => {
-              const username = e.target.getAttribute("data-username");
-              credentials = credentials.filter(
-                (cred) => cred.username !== username
-              );
-              saveCredentials();
-              log(`Removed credential for ${username}`, "warning");
+              const recipientOption = document.createElement("option");
+              recipientOption.value = user.username;
+              recipientOption.textContent = user.username;
+              recipientSelect.appendChild(recipientOption);
             });
-          });
-        }
-
-        function updateSenderSelect() {
-          senderSelect.innerHTML = '<option value="">Select Sender</option>';
-          credentials.forEach((cred) => {
-            const option = document.createElement("option");
-            option.value = cred.username;
-            option.textContent = cred.username;
-            senderSelect.appendChild(option);
-          });
-        }
-
-        addCredentialsBtn.addEventListener("click", () => {
-          const username = usernameInput.value;
-          const password = passwordInput.value;
-
-          if (username && password) {
-            // Check if username already exists
-            const existingCred = credentials.find(
-              (cred) => cred.username === username
-            );
-            if (existingCred) {
-              log(`Credential for ${username} already exists`, "warning");
-              return;
-            }
-
-            credentials.push({ username, password });
-            saveCredentials();
-
-            usernameInput.value = "";
-            passwordInput.value = "";
-            log(`Added credential for ${username}`, "success");
+          } catch (error) {
+            log("Failed to load users", "danger");
           }
-        });
+        }
 
+        // Send message functionality
         sendMessageBtn.addEventListener("click", async () => {
-          const serverAddress = serverAddressInput.value;
-          const serverPort = serverPortInput.value;
-          const connectionType = connectionTypeSelect.value;
-          const disableTLS = disableTLSCheckbox.checked;
           const sender = senderSelect.value;
-          const recipient = recipientInput.value;
+          const recipient = recipientSelect.value;
           const message = messageInput.value;
 
-          // Validate inputs
           if (!sender || !recipient || !message) {
             log("Please fill in all message fields", "danger");
             return;
           }
 
-          const senderCred = credentials.find(
-            (cred) => cred.username === sender
-          );
-          if (!senderCred) {
+          const senderData = users.find((user) => user.username === sender);
+          if (!senderData) {
             log("Selected sender not found", "danger");
             return;
           }
 
           try {
-            const response = await fetch(
-              `${BACKEND_URL}/bomber/send-xmpp-message`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  serverUrl: serverAddress,
-                  fromJID: `${sender}@example.com`,
-                  fromJIDPass: senderCred.password,
-                  toJID: recipient,
-                  message: message,
-                }),
-              }
-            );
+            const response = await fetch("/bomber/send-xmpp-message", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                serverUrl: "192.168.0.117", // Set the server URL here
+                fromJID: `${sender}@example.com`,
+                fromJIDPass: senderData.password,
+                toJID: recipient,
+                message: message,
+              }),
+            });
 
             if (!response.ok) {
               const errorData = await response.json();
@@ -322,70 +169,61 @@
               );
             }
 
-            const result = await response.json();
             log(`Message sent successfully to ${recipient}`, "success");
-
-            // Clear message input
-            messageInput.value = "";
+            messageInput.value = ""; // Clear message input
           } catch (error) {
             log(`Failed to send message: ${error.message}`, "danger");
           }
         });
-        const bombMessageBtn = document.getElementById("bombMessageBtn");
 
-        let bombingActive = false; // Track whether bombing is active
-        let bombingInterval; // Store the setInterval ID
+        // Bomb message functionality
+        let bombingActive = false;
+        let bombingInterval;
 
-        // Function to randomly select a user and send a fake message
         function bombMessage() {
-          if (credentials.length === 0) {
-            log("No credentials available to send a message", "danger");
+          if (users.length === 0) {
+            log("No users available for bombing", "danger");
             return;
           }
 
-          // Randomly select a sender
-          const randomSenderIndex = Math.floor(
-            Math.random() * credentials.length
-          );
-          const sender = credentials[randomSenderIndex].username;
+          // Select random sender
+          const randomSenderIndex = Math.floor(Math.random() * users.length);
+          const sender = users[randomSenderIndex].username;
 
-          // Randomly generate a recipient (can use a different list if desired)
-          const recipient = recipientInput.value; // You can use a predefined list here if needed.
+          // Select random recipient (can use the same logic to choose recipient)
+          const recipient =
+            recipientSelect.value || users[randomSenderIndex].username;
 
-          // Generate a fake message
           const message = generateRandomMessage();
 
           // Set inputs
-          recipientInput.value = recipient;
+          recipientSelect.value = recipient;
           messageInput.value = message;
           if (sendToRandom.checked) {
             senderSelect.value = sender;
           }
 
-          // Trigger send message
           sendMessageBtn.click();
           log(`Bombed message to ${recipient} from ${sender}`, "info");
         }
 
-        // Function to start bombing
         function startBombing() {
-          bombMessageBtn.textContent = "Stop Bombing"; // Update button text
+          bombMessageBtn.textContent = "Stop Bombing";
           bombingActive = true;
 
-          bombingInterval = setInterval(() => {
-            bombMessage();
-          }, Math.floor(Math.random() * (6000 - 3000 + 1)) + 1000); // Random delay between 1-4 seconds
+          bombingInterval = setInterval(
+            bombMessage,
+            Math.floor(Math.random() * (6000 - 3000 + 1)) + 1000
+          ); // Random delay between 1-4 seconds
         }
 
-        // Function to stop bombing
         function stopBombing() {
-          bombMessageBtn.textContent = "Bomb Message"; // Reset button text
+          bombMessageBtn.textContent = "Bomb Message";
           bombingActive = false;
 
-          clearInterval(bombingInterval); // Stop the bombing interval
+          clearInterval(bombingInterval);
         }
 
-        // Bomb message button click handler
         bombMessageBtn.addEventListener("click", () => {
           if (bombingActive) {
             stopBombing();
@@ -393,50 +231,47 @@
             startBombing();
           }
         });
-        // Initial credentials load
-        loadCredentials();
-      });
 
-      function generateRandomMessage() {
-        // Predefined sets of words
-        const subjects = ["Hey", "Hello", "Hi", "Greetings", "Good morning"];
-        const verbs = [
-          "how are you",
-          "hope you're doing well",
-          "wanted to check in",
-          "just wanted to say",
-          "thought I'd say",
-        ];
-        const adjectives = [
-          "great",
-          "amazing",
-          "wonderful",
-          "awesome",
-          "fantastic",
-        ];
-        const additionalPhrases = [
-          "Let's catch up soon!",
-          "I hope you have a great day!",
-          "Looking forward to hearing from you.",
-          "Stay safe and take care!",
-          "Can't wait to chat more.",
-        ];
+        // Generate random message for bombing
+        function generateRandomMessage() {
+          const subjects = ["Hey", "Hello", "Hi", "Greetings", "Good morning"];
+          const verbs = [
+            "how are you",
+            "hope you're doing well",
+            "wanted to check in",
+            "just wanted to say",
+            "thought I'd say",
+          ];
+          const adjectives = [
+            "great",
+            "amazing",
+            "wonderful",
+            "awesome",
+            "fantastic",
+          ];
+          const additionalPhrases = [
+            "Let's catch up soon!",
+            "I hope you have a great day!",
+            "Looking forward to hearing from you.",
+            "Stay safe and take care!",
+            "Can't wait to chat more.",
+          ];
 
-        // Function to get a random element from an array
-        function getRandomElement(arr) {
-          const randomIndex = Math.floor(Math.random() * arr.length);
-          return arr[randomIndex];
+          function getRandomElement(arr) {
+            const randomIndex = Math.floor(Math.random() * arr.length);
+            return arr[randomIndex];
+          }
+
+          return `${getRandomElement(subjects)}! ${getRandomElement(
+            verbs
+          )} and I hope everything is ${getRandomElement(
+            adjectives
+          )}. ${getRandomElement(additionalPhrases)}`;
         }
 
-        // Construct a random message
-        const message = `${getRandomElement(subjects)}! ${getRandomElement(
-          verbs
-        )} and I hope everything is ${getRandomElement(
-          adjectives
-        )}. ${getRandomElement(additionalPhrases)}`;
-
-        return message;
-      }
+        // Initial users load
+        loadUsers();
+      });
     </script>
   </body>
 </html>

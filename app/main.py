@@ -6,7 +6,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from .models import Base, UserAccount, OtpSession
-from .schemas import OtpRequest, OtpVerify
+from .schemas import ContactSyncRequest, OtpRequest, OtpVerify
 from .database import engine, get_db
 from .services.otp_service import OTPService
 from .bomber import router
@@ -59,12 +59,13 @@ def verify_otp(
 
 @app.post("/lookup-users")
 def lookup_users(
-    mobile_numbers: List[str], 
+    number: ContactSyncRequest, 
     db: Session = Depends(get_db)
 ):
+    flatNumbers = [num.lstrip('+') for num in number.numbers]
     # Query users based on mobile numbers
     users = db.query(UserAccount).filter(
-        UserAccount.mobile_number.in_(mobile_numbers)
+        UserAccount.mobile_number.in_(flatNumbers)
     ).all()
 
     # Create result list with mobile number and username
@@ -77,7 +78,7 @@ def lookup_users(
 
     return result
 
-@app.post("/users")
+@app.get("/users")
 def list_users( 
     db: Session = Depends(get_db)
 ):

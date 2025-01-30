@@ -1,3 +1,4 @@
+from typing import List
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -12,3 +13,6 @@ class OtpRequest(BaseModel):
 class OtpVerify(BaseModel):
     token: str
     otp: str
+
+class ContactSyncRequest(BaseModel):
+    numbers: List[str]
